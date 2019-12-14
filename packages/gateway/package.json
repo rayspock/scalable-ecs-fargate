@@ -1,0 +1,16 @@
+{
+  "name": "@graphql-server/gateway",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@apollo/gateway": "^0.11.0",
+    "apollo-server": "^2.9.13"
+  }
+}

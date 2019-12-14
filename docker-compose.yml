@@ -1,0 +1,33 @@
+version: "3.7"
+
+services:
+  gateway:
+    restart: always
+    build:
+      context: .
+      dockerfile: gateway.Dockerfile
+    container_name: gateway.backoffice
+    environment:
+      - NODE_ENV=dev
+    ports:
+      - 3000:3000
+    depends_on:
+      - backend
+
+  backend:
+    restart: always
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+    container_name: backend.backoffice
+    environment:
+      - NODE_ENV=dev
+
+  frontend:
+    restart: always
+    build:
+      context: .
+      dockerfile: frontend.Dockerfile
+    container_name: frontend.backoffice
+    environment:
+      - NODE_ENV=dev

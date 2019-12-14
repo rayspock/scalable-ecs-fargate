@@ -1,0 +1,1206 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'A stack for deploying containerized applications in AWS Fargate.'
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+      - Label:
+          default: 'VPC Parameters'
+        Parameters:
+          - ClassB
+      - Label:
+          default: 'Load Balancer Parameters'
+        Parameters:
+          - LoadBalancerCertificateArn
+          - LoadBalancerIdleTimeout
+          - LoadBalancerPriority
+          - LoadBalancerHostPattern
+          - LoadBalancerPathPattern
+          - LoadBalancerDeregistrationDelay
+          - LoadBalancerHealthCheckPath
+      - Label:
+          default: 'Namespace Parameters'
+        Parameters:
+          - NSName
+      - Label:
+          default: 'Task Parameters'
+        Parameters:
+          - TaskPolicies
+          - GatewayImage
+          - FrontendImage
+          - BackendImage
+          - GatewayPort
+          - FrontendPort
+          - BackendPort
+      - Label:
+          default: 'Service Parameters'
+        Parameters:
+          - GatewayServiceName
+          - FrontendServiceName
+          - BackendServiceName
+          - Cpu
+          - Memory
+          - AutoScaling
+          - DesiredCount
+          - MaxCapacity
+          - MinCapacity
+          - HealthCheckGracePeriod
+          - LogsRetentionInDays
+Parameters:
+  ClassB:
+    Description: 'Class B of VPC (10.XXX.0.0./16)'
+    Type: Number
+    Default: 0
+    ConstraintDescription: 'Must be in the range [0-255]'
+    MinValue: 0
+    MaxValue: 255
+  LoadBalancerCertificateArn:
+    Description: 'Optional Amazon Resource Name (ARN) of the certificate to associate with the load balancer. If set, HTTP requests are redirected to HTTPS.'
+    Type: String
+    Default: ''
+  LoadBalancerIdleTimeout:
+    Description: 'The idle timeout value, in seconds.'
+    Type: Number
+    Default: 60
+    MinValue: 1
+    MaxValue: 4000
+  LoadBalancerPriority:
+    Description: 'The priority for the rule. Elastic Load Balancing evaluates rules in priority order, from the lowest value to the highest value. If a request satisfies a rule, Elastic Load Balancing ignores all subsequent rules. A target group can have only one rule with a given priority.'
+    Type: Number
+    Default: 1
+    ConstraintDescription: 'Must be in the range [1-99999]'
+    MinValue: 1
+    MaxValue: 99999
+  LoadBalancerHostPattern:
+    Description: 'Optional host pattern. Specify LoadBalancerPathPattern and/or LoadBalancerHostPattern.'
+    Type: String
+    Default: ''
+    ConstraintDescription: 'Must not be longer than 255'
+    MaxLength: 255
+  LoadBalancerPathPattern:
+    Description: 'Optional path pattern. Specify LoadBalancerPathPattern and/or LoadBalancerHostPattern.'
+    Type: String
+    Default: '/*'
+    ConstraintDescription: 'Must not be longer than 255'
+    MaxLength: 255
+  LoadBalancerDeregistrationDelay:
+    Description: 'The amount time (in seconds) to wait before changing the state of a deregistering target from draining to unused.'
+    Type: Number
+    Default: 60
+    ConstraintDescription: 'Must be in the range [0-3600]'
+    MinValue: 0
+    MaxValue: 3600
+  LoadBalancerHealthCheckPath:
+    Description: 'Health checks path for gateway or proxy'
+    Type: String
+    Default: '/.well-known/apollo/server-health'
+    ConstraintDescription: 'Must not be longer than 255'
+    MaxLength: 255
+  TaskPolicies:
+    Description: 'Comma-delimited list of IAM managed policy ARNs to attach to the task IAM role'
+    Type: String
+    Default: ''
+  NSName:
+    Description: 'The name of the namespace.'
+    Type: String
+    Default: backoffice
+  GatewayServiceName:
+    Description: 'The name of the service used for service discovery (Cloud Map).'
+    Type: String
+    Default: gateway
+  GatewayImage:
+    Description: 'The Docker image to use for the app container. You can use images in the Docker Hub registry or specify other repositories (repository-url/image:tag).'
+    Type: String
+    AllowedPattern: ".+" # require non blank value
+  GatewayPort:
+    Description: 'The port exposed by the app container that receives traffic from the load balancer or the proxy container.'
+    Type: Number
+    Default: 3000
+    MinValue: 1
+    MaxValue: 49150
+  FrontendServiceName:
+    Description: 'The name of the service used for service discovery (Cloud Map).'
+    Type: String
+    Default: frontend
+  FrontendImage:
+    Description: 'The Docker image to use for the app container. You can use images in the Docker Hub registry or specify other repositories (repository-url/image:tag).'
+    Type: String
+    AllowedPattern: ".+" # require non blank value
+  FrontendPort:
+    Description: 'The port exposed by the app container that receives traffic from the load balancer or the proxy container.'
+    Type: Number
+    Default: 3000
+    MinValue: 1
+    MaxValue: 49150
+  BackendServiceName:
+    Description: 'The name of the service used for service discovery (Cloud Map).'
+    Type: String
+    Default: backend
+  BackendImage:
+    Description: 'The Docker image to use for the app container. You can use images in the Docker Hub registry or specify other repositories (repository-url/image:tag).'
+    Type: String
+    AllowedPattern: ".+" # require non blank value
+  BackendPort:
+    Description: 'The port exposed by the app container that receives traffic from the load balancer or the proxy container.'
+    Type: Number
+    Default: 3000
+    MinValue: 1
+    MaxValue: 49150
+  Cpu:
+    Description: 'The minimum number of vCPUs to reserve for the container.'
+    Type: String
+    Default: '0.25'
+    AllowedValues: ['0.25', '0.5', '1', '2', '4']
+  Memory:
+    Description: 'The amount (in GB) of memory used by the task.'
+    Type: String
+    Default: '0.5'
+    AllowedValues: ['0.5', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30']
+  DesiredCount:
+    Description: 'The number of simultaneous tasks, that you want to run on the cluster.'
+    Type: Number
+    Default: 2
+    ConstraintDescription: 'Must be >= 1'
+    MinValue: 1
+  MaxCapacity:
+    Description: 'The maximum number of simultaneous tasks, that you want to run on the cluster.'
+    Type: Number
+    Default: 4
+    ConstraintDescription: 'Must be >= 1'
+    MinValue: 1
+  MinCapacity:
+    Description: 'The minimum number of simultaneous tasks, that you want to run on the cluster.'
+    Type: Number
+    Default: 2
+    ConstraintDescription: 'Must be >= 1'
+    MinValue: 1
+  LogsRetentionInDays:
+    Description: 'Specifies the number of days you want to retain log events in the specified log group.'
+    Type: Number
+    Default: 14
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+  AutoScaling:
+    Description: 'Scale number of tasks based on CPU load?'
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  HealthCheckGracePeriod:
+    Description: 'The period of time, in seconds, that the Amazon ECS service scheduler ignores unhealthy Elastic Load Balancing target health checks after a task has first started.'
+    Type: Number
+    Default: 60
+    MinValue: 0
+    MaxValue: 1800
+Mappings:
+  CpuMap:
+    '0.25':
+      Cpu: 256
+    '0.5':
+      Cpu: 512
+    '1':
+      Cpu: 1024
+    '2':
+      Cpu: 2048
+    '4':
+      Cpu: 4096
+  MemoryMap:
+    '0.5':
+      Memory: 512
+    '1':
+      Memory: 1024
+    '2':
+      Memory: 2048
+    '3':
+      Memory: 3072
+    '4':
+      Memory: 4096
+    '5':
+      Memory: 5120
+    '6':
+      Memory: 6144
+    '7':
+      Memory: 7168
+    '8':
+      Memory: 8192
+    '9':
+      Memory: 9216
+    '10':
+      Memory: 10240
+    '11':
+      Memory: 11264
+    '12':
+      Memory: 12288
+    '13':
+      Memory: 13312
+    '14':
+      Memory: 14336
+    '15':
+      Memory: 15360
+    '16':
+      Memory: 16384
+    '17':
+      Memory: 17408
+    '18':
+      Memory: 18432
+    '19':
+      Memory: 19456
+    '20':
+      Memory: 20480
+    '21':
+      Memory: 21504
+    '22':
+      Memory: 22528
+    '23':
+      Memory: 23552
+    '24':
+      Memory: 24576
+    '25':
+      Memory: 25600
+    '26':
+      Memory: 26624
+    '27':
+      Memory: 27648
+    '28':
+      Memory: 28672
+    '29':
+      Memory: 29696
+    '30':
+      Memory: 30720
+Conditions:
+  HasLoadBalancerCertificateArn: !Not [!Equals [!Ref LoadBalancerCertificateArn, '']]
+  HasLoadBalancerPathPattern: !Not [!Equals [!Ref LoadBalancerPathPattern, '']]
+  HasLoadBalancerHostPattern: !Not [!Equals [!Ref LoadBalancerHostPattern, '']]
+  HasAutoScaling: !Equals [!Ref AutoScaling, 'true']
+  HasTaskPolicies: !Not [!Equals [!Ref TaskPolicies, '']]
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      CidrBlock: !Sub '10.${ClassB}.0.0/16'
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '10.${ClassB}.0.0/16'
+  VPCGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  SubnetAPublic:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Sub '10.${ClassB}.0.0/20'
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: 'A public'
+        - Key: Reach
+          Value: public
+  SubnetAPrivate:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Sub '10.${ClassB}.16.0/20'
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: 'A private'
+        - Key: Reach
+          Value: private
+  SubnetBPublic:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Sub '10.${ClassB}.32.0/20'
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: 'B public'
+        - Key: Reach
+          Value: public
+  SubnetBPrivate:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Sub '10.${ClassB}.48.0/20'
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: 'B private'
+        - Key: Reach
+          Value: private
+  RouteTableAPublic:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: 'A Public'
+  RouteTableAPrivate:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: 'A Private'
+  RouteTableBPublic:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: 'B Public'
+  RouteTableBPrivate:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: 'B Private'
+  RouteTableAssociationAPublic:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref SubnetAPublic
+      RouteTableId: !Ref RouteTableAPublic
+  RouteTableAssociationAPrivate:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref SubnetAPrivate
+      RouteTableId: !Ref RouteTableAPrivate
+  RouteTableAssociationBPublic:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref SubnetBPublic
+      RouteTableId: !Ref RouteTableBPublic
+  RouteTableAssociationBPrivate:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref SubnetBPrivate
+      RouteTableId: !Ref RouteTableBPrivate
+  RouteTablePublicAInternetRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTableAPublic
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref InternetGateway
+  RouteTablePublicBInternetRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTableBPublic
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref InternetGateway
+  # NatGatway for private subnets
+  NatGatewayAAttachment:
+    Type: 'AWS::EC2::EIP'
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      Domain: vpc
+  NatGatewayBAttachment:
+    Type: 'AWS::EC2::EIP'
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      Domain: vpc
+  NatGatewayA:
+    Type: 'AWS::EC2::NatGateway'
+    Properties:
+      AllocationId: !GetAtt 'NatGatewayAAttachment.AllocationId'
+      SubnetId: !Ref SubnetAPublic
+  NatGatewayB:
+    Type: 'AWS::EC2::NatGateway'
+    Properties:
+      AllocationId: !GetAtt 'NatGatewayBAttachment.AllocationId'
+      SubnetId: !Ref SubnetBPublic
+  RouteTablePrivateAInternetRoute:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref RouteTableAPrivate
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref NatGatewayA
+  RouteTablePrivateBInternetRoute:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref RouteTableBPrivate
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref NatGatewayB
+  NetworkAclPublic:
+    Type: 'AWS::EC2::NetworkAcl'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: Public
+  NetworkAclPrivate:
+    Type: 'AWS::EC2::NetworkAcl'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: Private
+  SubnetNetworkAclAssociationAPublic:
+    Type: 'AWS::EC2::SubnetNetworkAclAssociation'
+    Properties:
+      SubnetId: !Ref SubnetAPublic
+      NetworkAclId: !Ref NetworkAclPublic
+  SubnetNetworkAclAssociationAPrivate:
+    Type: 'AWS::EC2::SubnetNetworkAclAssociation'
+    Properties:
+      SubnetId: !Ref SubnetAPrivate
+      NetworkAclId: !Ref NetworkAclPrivate
+  SubnetNetworkAclAssociationBPublic:
+    Type: 'AWS::EC2::SubnetNetworkAclAssociation'
+    Properties:
+      SubnetId: !Ref SubnetBPublic
+      NetworkAclId: !Ref NetworkAclPublic
+  SubnetNetworkAclAssociationBPrivate:
+    Type: 'AWS::EC2::SubnetNetworkAclAssociation'
+    Properties:
+      SubnetId: !Ref SubnetBPrivate
+      NetworkAclId: !Ref NetworkAclPrivate
+  NetworkAclEntryInPublicAllowAll:
+    Type: 'AWS::EC2::NetworkAclEntry'
+    Properties:
+      NetworkAclId: !Ref NetworkAclPublic
+      RuleNumber: 99
+      Protocol: -1
+      RuleAction: allow
+      Egress: false
+      CidrBlock: '0.0.0.0/0'
+  NetworkAclEntryOutPublicAllowAll:
+    Type: 'AWS::EC2::NetworkAclEntry'
+    Properties:
+      NetworkAclId: !Ref NetworkAclPublic
+      RuleNumber: 99
+      Protocol: -1
+      RuleAction: allow
+      Egress: true
+      CidrBlock: '0.0.0.0/0'
+  NetworkAclEntryInPrivateAllowVPC:
+    Type: 'AWS::EC2::NetworkAclEntry'
+    Properties:
+      NetworkAclId: !Ref NetworkAclPrivate
+      RuleNumber: 99
+      Protocol: -1
+      RuleAction: allow
+      Egress: false
+      CidrBlock: '0.0.0.0/0'
+  NetworkAclEntryOutPrivateAllowVPC:
+    Type: 'AWS::EC2::NetworkAclEntry'
+    Properties:
+      NetworkAclId: !Ref NetworkAclPrivate
+      RuleNumber: 99
+      Protocol: -1
+      RuleAction: allow
+      Egress: true
+      CidrBlock: '0.0.0.0/0'
+  # ECS Resources
+  Cluster:
+    Type: 'AWS::ECS::Cluster'
+    Properties: {}
+  LoadBalancerSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: !Sub '${AWS::StackName}-load-balancer'
+      VpcId: !Ref VPC
+  LoadBalancerSecurityGroupInHttpFromWorld:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref LoadBalancerSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      CidrIp: '0.0.0.0/0'
+  LoadBalancerSecurityGroupInHttpsFromWorld:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref LoadBalancerSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: '0.0.0.0/0'
+  LoadBalancer:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      LoadBalancerAttributes:
+        - Key: 'idle_timeout.timeout_seconds'
+          Value: !Ref LoadBalancerIdleTimeout
+        - Key: 'routing.http2.enabled'
+          Value: 'true'
+      Scheme: 'internet-facing'
+      SecurityGroups:
+        - !Ref LoadBalancerSecurityGroup
+      Subnets:
+        - !Ref SubnetAPublic
+        - !Ref SubnetBPublic
+      Type: application
+  HttpListener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+        - !If
+          - HasLoadBalancerCertificateArn
+          - RedirectConfig:
+              Port: '443'
+              Protocol: HTTPS
+              StatusCode: 'HTTP_301'
+            Type: redirect
+          - FixedResponseConfig:
+              ContentType: 'text/plain'
+              MessageBody: default
+              StatusCode: '404'
+            Type: 'fixed-response'
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+  HttpsListener:
+    Condition: HasLoadBalancerCertificateArn
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      Certificates:
+        - CertificateArn: !Ref LoadBalancerCertificateArn
+      DefaultActions:
+        - FixedResponseConfig:
+            ContentType: 'text/plain'
+            MessageBody: default
+            StatusCode: '404'
+          Type: 'fixed-response'
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 443
+      Protocol: HTTPS
+  # Service Cluster ALB
+  TargetGroup:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      HealthCheckIntervalSeconds: 15
+      HealthCheckPath: !Ref LoadBalancerHealthCheckPath
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Matcher:
+        HttpCode: '200-299'
+      Port: !Ref GatewayPort
+      Protocol: HTTP
+      TargetType: ip
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: !Ref LoadBalancerDeregistrationDelay
+      VpcId: !Ref VPC
+  LoadBalancerListenerRule:
+    Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      Conditions: !If
+        - HasLoadBalancerPathPattern
+        - !If
+          - HasLoadBalancerHostPattern
+          - - Field: host-header
+              Values:
+                - !Ref LoadBalancerHostPattern
+            - Field: path-pattern
+              Values:
+                - !Sub '${LoadBalancerPathPattern}'
+          - - Field: path-pattern
+              Values:
+                - !Sub '${LoadBalancerPathPattern}'
+        - !If
+          - HasLoadBalancerHostPattern
+          - - Field: host-header
+              Values:
+                - !Ref LoadBalancerHostPattern
+          - [] # neither LoadBalancerHostPattern nor LoadBalancerPathPattern specified
+      ListenerArn: !Ref HttpListener
+      Priority: !Ref LoadBalancerPriority
+  TaskExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 'ecs-tasks.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: AmazonECSTaskExecutionRolePolicy # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ecr:GetAuthorizationToken'
+                  - 'ecr:BatchCheckLayerAvailability'
+                  - 'ecr:GetDownloadUrlForLayer'
+                  - 'ecr:BatchGetImage'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !GetAtt 'LogGroup.Arn'
+  TaskRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 'ecs-tasks.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns: !If [HasTaskPolicies, !Split [',', !Ref TaskPolicies], !Ref 'AWS::NoValue']
+  LogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      RetentionInDays: !Ref LogsRetentionInDays
+  ServicePublicSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: !Sub '${AWS::StackName}-PublicService'
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+          FromPort: !Ref GatewayPort
+          ToPort: !Ref GatewayPort
+          IpProtocol: tcp
+  ServicePrivateSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: !Sub '${AWS::StackName}-PrivateService'
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !Ref ServicePublicSecurityGroup
+          IpProtocol: -1
+  Namespace:
+    Type: 'AWS::ServiceDiscovery::PrivateDnsNamespace'
+    Properties:
+      Description: !Ref 'AWS::StackName'
+      Vpc: !Ref VPC
+      Name: !Ref NSName
+  # Service Definition
+  ## Gateway
+  GatewayServiceDiscovery:
+    Type: 'AWS::ServiceDiscovery::Service'
+    Properties:
+      Description: !Ref 'AWS::StackName'
+      DnsConfig:
+        DnsRecords:
+          - Type: A
+            TTL: 30
+          - Type: SRV
+            TTL: 30
+        NamespaceId: !GetAtt 'Namespace.Id'
+        RoutingPolicy: MULTIVALUE
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+      Name: !Ref GatewayServiceName
+      NamespaceId: !GetAtt 'Namespace.Id'
+  GatewayTaskDefinition:
+    Type: 'AWS::ECS::TaskDefinition'
+    Properties:
+      ContainerDefinitions:
+        - Name: Gateway
+          Image: !Ref GatewayImage
+          PortMappings:
+            - ContainerPort: !Ref GatewayPort
+              Protocol: tcp
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              'awslogs-region': !Ref 'AWS::Region'
+              'awslogs-group': !Ref LogGroup
+              'awslogs-stream-prefix': Gateway
+      Cpu: !FindInMap [CpuMap, !Ref Cpu, Cpu]
+      ExecutionRoleArn: !GetAtt 'TaskExecutionRole.Arn'
+      Family: !Ref 'AWS::StackName'
+      Memory: !FindInMap [MemoryMap, !Ref Memory, Memory]
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      TaskRoleArn: !GetAtt 'TaskRole.Arn'
+  GatewayService:
+    DependsOn: LoadBalancerListenerRule
+    Type: 'AWS::ECS::Service'
+    Properties:
+      Cluster: !Ref Cluster
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: !Ref DesiredCount
+      HealthCheckGracePeriodSeconds: !Ref HealthCheckGracePeriod
+      LaunchType: FARGATE
+      ServiceRegistries:
+        - ContainerName: Gateway
+          ContainerPort: !Ref GatewayPort
+          RegistryArn: !GetAtt 'GatewayServiceDiscovery.Arn'
+      LoadBalancers:
+        - ContainerName: Gateway
+          ContainerPort: !Ref GatewayPort
+          TargetGroupArn: !Ref TargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref ServicePublicSecurityGroup
+          Subnets:
+            - !Ref SubnetAPublic
+            - !Ref SubnetBPublic
+      TaskDefinition: !Ref GatewayTaskDefinition
+  ## Backend
+  BackendServiceDiscovery:
+    Type: 'AWS::ServiceDiscovery::Service'
+    Properties:
+      Description: !Ref 'AWS::StackName'
+      DnsConfig:
+        DnsRecords:
+          - Type: A
+            TTL: 30
+          - Type: SRV
+            TTL: 30
+        NamespaceId: !GetAtt 'Namespace.Id'
+        RoutingPolicy: MULTIVALUE
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+      Name: !Ref BackendServiceName
+      NamespaceId: !GetAtt 'Namespace.Id'
+  BackendTaskDefinition:
+    Type: 'AWS::ECS::TaskDefinition'
+    Properties:
+      ContainerDefinitions:
+        - Name: Backend
+          Image: !Ref BackendImage
+          PortMappings:
+            - ContainerPort: !Ref BackendPort
+              Protocol: tcp
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              'awslogs-region': !Ref 'AWS::Region'
+              'awslogs-group': !Ref LogGroup
+              'awslogs-stream-prefix': Backend
+      Cpu: !FindInMap [CpuMap, !Ref Cpu, Cpu]
+      ExecutionRoleArn: !GetAtt 'TaskExecutionRole.Arn'
+      Family: !Ref 'AWS::StackName'
+      Memory: !FindInMap [MemoryMap, !Ref Memory, Memory]
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      TaskRoleArn: !GetAtt 'TaskRole.Arn'
+  BackendService:
+    DependsOn: LoadBalancerListenerRule
+    Type: 'AWS::ECS::Service'
+    Properties:
+      Cluster: !Ref Cluster
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: !Ref DesiredCount
+      LaunchType: FARGATE
+      ServiceRegistries:
+        - ContainerName: Backend
+          ContainerPort: !Ref BackendPort
+          RegistryArn: !GetAtt 'BackendServiceDiscovery.Arn'
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - !Ref ServicePrivateSecurityGroup
+          Subnets:
+            - !Ref SubnetAPrivate
+            - !Ref SubnetBPrivate
+      TaskDefinition: !Ref BackendTaskDefinition
+  ## Frontend
+  FrontendServiceDiscovery:
+    Type: 'AWS::ServiceDiscovery::Service'
+    Properties:
+      Description: !Ref 'AWS::StackName'
+      DnsConfig:
+        DnsRecords:
+          - Type: A
+            TTL: 30
+          - Type: SRV
+            TTL: 30
+        NamespaceId: !GetAtt 'Namespace.Id'
+        RoutingPolicy: MULTIVALUE
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+      Name: !Ref FrontendServiceName
+      NamespaceId: !GetAtt 'Namespace.Id'
+  FrontendTaskDefinition:
+    Type: 'AWS::ECS::TaskDefinition'
+    Properties:
+      ContainerDefinitions:
+        - Name: Frontend
+          Image: !Ref FrontendImage
+          PortMappings:
+            - ContainerPort: !Ref FrontendPort
+              Protocol: tcp
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              'awslogs-region': !Ref 'AWS::Region'
+              'awslogs-group': !Ref LogGroup
+              'awslogs-stream-prefix': Frontend
+      Cpu: !FindInMap [CpuMap, !Ref Cpu, Cpu]
+      ExecutionRoleArn: !GetAtt 'TaskExecutionRole.Arn'
+      Family: !Ref 'AWS::StackName'
+      Memory: !FindInMap [MemoryMap, !Ref Memory, Memory]
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      TaskRoleArn: !GetAtt 'TaskRole.Arn'
+  FrontendService:
+    DependsOn: LoadBalancerListenerRule
+    Type: 'AWS::ECS::Service'
+    Properties:
+      Cluster: !Ref Cluster
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: !Ref DesiredCount
+      LaunchType: FARGATE
+      ServiceRegistries:
+        - ContainerName: Frontend
+          ContainerPort: !Ref FrontendPort
+          RegistryArn: !GetAtt 'FrontendServiceDiscovery.Arn'
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - !Ref ServicePrivateSecurityGroup
+          Subnets:
+            - !Ref SubnetAPrivate
+            - !Ref SubnetBPrivate
+      TaskDefinition: !Ref FrontendTaskDefinition
+  # Auto Scaling
+  ## Scaling Role
+  ScalableTargetRole: # based on http://docs.aws.amazon.com/AmazonECS/latest/developerguide/autoscale_IAM_role.html
+    Condition: HasAutoScaling
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 'application-autoscaling.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: AmazonEC2ContainerServiceAutoscaleRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ecs:DescribeServices'
+                  - 'ecs:UpdateService'
+                Resource: '*'
+        - PolicyName: cloudwatch
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'cloudwatch:DescribeAlarms'
+                Resource: '*'
+  ## Gateway Scale Policy
+  GatewayScalableTarget:
+    Condition: HasAutoScaling
+    Type: 'AWS::ApplicationAutoScaling::ScalableTarget'
+    Properties:
+      MaxCapacity: !Ref MaxCapacity
+      MinCapacity: !Ref MinCapacity
+      ResourceId: !Sub
+        - 'service/${Cluster}/${Service}'
+        - Cluster: !Ref Cluster
+          Service: !GetAtt 'GatewayService.Name'
+      RoleARN: !GetAtt 'ScalableTargetRole.Arn'
+      ScalableDimension: 'ecs:service:DesiredCount'
+      ServiceNamespace: ecs
+  GatewayScaleUpPolicy:
+    Condition: HasAutoScaling
+    Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
+    Properties:
+      PolicyName: !Sub '${AWS::StackName}-scale-up'
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref GatewayScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: PercentChangeInCapacity
+        Cooldown: 300
+        MinAdjustmentMagnitude: 1
+        StepAdjustments:
+          - MetricIntervalLowerBound: 0
+            ScalingAdjustment: 25
+  GatewayScaleDownPolicy:
+    Condition: HasAutoScaling
+    Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
+    Properties:
+      PolicyName: !Sub '${AWS::StackName}-scale-down'
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref GatewayScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: PercentChangeInCapacity
+        Cooldown: 300
+        MinAdjustmentMagnitude: 1
+        StepAdjustments:
+          - MetricIntervalUpperBound: 0
+            ScalingAdjustment: -25
+  GatewayCPUUtilizationHighAlarm:
+    Condition: HasAutoScaling
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: 'Service is running out of CPU'
+      Namespace: 'AWS/ECS'
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref Cluster
+        - Name: ServiceName
+          Value: !GetAtt 'GatewayService.Name'
+      MetricName: CPUUtilization
+      ComparisonOperator: GreaterThanThreshold
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 60
+      AlarmActions:
+        - !Ref GatewayScaleUpPolicy
+  GatewayCPUUtilizationLowAlarm:
+    Condition: HasAutoScaling
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: 'Service is wasting CPU'
+      Namespace: 'AWS/ECS'
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref Cluster
+        - Name: ServiceName
+          Value: !GetAtt 'GatewayService.Name'
+      MetricName: CPUUtilization
+      ComparisonOperator: LessThanThreshold
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 30
+      AlarmActions:
+        - !Ref GatewayScaleDownPolicy
+  ## Backend Scale Policy
+  BackendScalableTarget:
+    Condition: HasAutoScaling
+    Type: 'AWS::ApplicationAutoScaling::ScalableTarget'
+    Properties:
+      MaxCapacity: !Ref MaxCapacity
+      MinCapacity: !Ref MinCapacity
+      ResourceId: !Sub
+        - 'service/${Cluster}/${Service}'
+        - Cluster: !Ref Cluster
+          Service: !GetAtt 'BackendService.Name'
+      RoleARN: !GetAtt 'ScalableTargetRole.Arn'
+      ScalableDimension: 'ecs:service:DesiredCount'
+      ServiceNamespace: ecs
+  BackendScaleUpPolicy:
+    Condition: HasAutoScaling
+    Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
+    Properties:
+      PolicyName: !Sub '${AWS::StackName}-scale-up'
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref BackendScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: PercentChangeInCapacity
+        Cooldown: 300
+        MinAdjustmentMagnitude: 1
+        StepAdjustments:
+          - MetricIntervalLowerBound: 0
+            ScalingAdjustment: 25
+  BackendScaleDownPolicy:
+    Condition: HasAutoScaling
+    Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
+    Properties:
+      PolicyName: !Sub '${AWS::StackName}-scale-down'
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref BackendScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: PercentChangeInCapacity
+        Cooldown: 300
+        MinAdjustmentMagnitude: 1
+        StepAdjustments:
+          - MetricIntervalUpperBound: 0
+            ScalingAdjustment: -25
+  BackendCPUUtilizationHighAlarm:
+    Condition: HasAutoScaling
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: 'Service is running out of CPU'
+      Namespace: 'AWS/ECS'
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref Cluster
+        - Name: ServiceName
+          Value: !GetAtt 'BackendService.Name'
+      MetricName: CPUUtilization
+      ComparisonOperator: GreaterThanThreshold
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 60
+      AlarmActions:
+        - !Ref BackendScaleUpPolicy
+  BackendCPUUtilizationLowAlarm:
+    Condition: HasAutoScaling
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: 'Service is wasting CPU'
+      Namespace: 'AWS/ECS'
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref Cluster
+        - Name: ServiceName
+          Value: !GetAtt 'BackendService.Name'
+      MetricName: CPUUtilization
+      ComparisonOperator: LessThanThreshold
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 30
+      AlarmActions:
+        - !Ref BackendScaleDownPolicy
+  ## Frontend Scale Policy
+  FrontendScalableTarget:
+    Condition: HasAutoScaling
+    Type: 'AWS::ApplicationAutoScaling::ScalableTarget'
+    Properties:
+      MaxCapacity: !Ref MaxCapacity
+      MinCapacity: !Ref MinCapacity
+      ResourceId: !Sub
+        - 'service/${Cluster}/${Service}'
+        - Cluster: !Ref Cluster
+          Service: !GetAtt 'FrontendService.Name'
+      RoleARN: !GetAtt 'ScalableTargetRole.Arn'
+      ScalableDimension: 'ecs:service:DesiredCount'
+      ServiceNamespace: ecs
+  FrontendScaleUpPolicy:
+    Condition: HasAutoScaling
+    Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
+    Properties:
+      PolicyName: !Sub '${AWS::StackName}-scale-up'
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref FrontendScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: PercentChangeInCapacity
+        Cooldown: 300
+        MinAdjustmentMagnitude: 1
+        StepAdjustments:
+          - MetricIntervalLowerBound: 0
+            ScalingAdjustment: 25
+  FrontendScaleDownPolicy:
+    Condition: HasAutoScaling
+    Type: 'AWS::ApplicationAutoScaling::ScalingPolicy'
+    Properties:
+      PolicyName: !Sub '${AWS::StackName}-scale-down'
+      PolicyType: StepScaling
+      ScalingTargetId: !Ref FrontendScalableTarget
+      StepScalingPolicyConfiguration:
+        AdjustmentType: PercentChangeInCapacity
+        Cooldown: 300
+        MinAdjustmentMagnitude: 1
+        StepAdjustments:
+          - MetricIntervalUpperBound: 0
+            ScalingAdjustment: -25
+  FrontendCPUUtilizationHighAlarm:
+    Condition: HasAutoScaling
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: 'Service is running out of CPU'
+      Namespace: 'AWS/ECS'
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref Cluster
+        - Name: ServiceName
+          Value: !GetAtt 'FrontendService.Name'
+      MetricName: CPUUtilization
+      ComparisonOperator: GreaterThanThreshold
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 60
+      AlarmActions:
+        - !Ref FrontendScaleUpPolicy
+  FrontendCPUUtilizationLowAlarm:
+    Condition: HasAutoScaling
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: 'Service is wasting CPU'
+      Namespace: 'AWS/ECS'
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref Cluster
+        - Name: ServiceName
+          Value: !GetAtt 'FrontendService.Name'
+      MetricName: CPUUtilization
+      ComparisonOperator: LessThanThreshold
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 30
+      AlarmActions:
+        - !Ref FrontendScaleDownPolicy
+Outputs:
+  StackName:
+    Description: 'Stack name.'
+    Value: !Sub '${AWS::StackName}'
+  AZs:
+    Description: 'AZs'
+    Value: 2
+  AZA:
+    Description: 'AZ of A'
+    Value: !Select [0, !GetAZs '']
+  AZB:
+    Description: 'AZ of B'
+    Value: !Select [1, !GetAZs '']
+  CidrBlock:
+    Description: 'The set of IP addresses for the VPC.'
+    Value: !GetAtt 'VPC.CidrBlock'
+  VPC:
+    Description: 'VPC.'
+    Value: !Ref VPC
+  SubnetsPublic:
+    Description: 'Subnets public.'
+    Value: !Join [',', [!Ref SubnetAPublic, !Ref SubnetBPublic]]
+  SubnetsPrivate:
+    Description: 'Subnets private.'
+    Value: !Join [',', [!Ref SubnetAPrivate, !Ref SubnetBPrivate]]
+  Cluster:
+    Description: 'Fargate cluster.'
+    Value: !Ref Cluster
+  DNSName:
+    Description: 'The DNS name for the ECS cluster load balancer.'
+    Value: !GetAtt 'LoadBalancer.DNSName'
+  LoadBalancerFullName:
+    Description: 'ALB full name for services.'
+    Value: !GetAtt 'LoadBalancer.LoadBalancerFullName'
+  LoadBalancerSecurityGroup:
+    Description: 'The Security Group of the Load Balancer.'
+    Value: !Ref LoadBalancerSecurityGroup
+  HttpListener:
+    Description: 'ALB HTTP listener for services.'
+    Value: !Ref HttpListener
+  HttpsListener:
+    Condition: HasLoadBalancerCertificateArn
+    Description: 'ALB HTTPS listener for services.'
+    Value: !Ref HttpsListener
+  ExportURL:
+    Description: 'URL to the ECS cluster.'
+    Value: !Sub 'http://${LoadBalancer.DNSName}'
+  ExportGatewayDNS:
+    Description: 'Private DNS name for microservice'
+    Value: !Join ['.', [!Ref GatewayServiceName, !Ref NSName]]
+  ExportFrontendDNS:
+    Description: 'Private DNS name for microservice'
+    Value: !Join ['.', [!Ref FrontendServiceName, !Ref NSName]]
+  ExportBackendDNS:
+    Description: 'Private DNS name for microservice'
+    Value: !Join ['.', [!Ref BackendServiceName, !Ref NSName]]
