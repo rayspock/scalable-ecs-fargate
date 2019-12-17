@@ -7,6 +7,16 @@
 ## Architecture
 ![Scalable ECS Fargate](images/scalable-ecs-fargate.png)
 
+## Load testing with Apache Benchmark
+- Populate data.txt with 
+```graphql
+{"query":"{ books { title } }"}
+```
+- Run the test
+```shell script
+ab -v 3 -n 10000 -c 10 -T 'application/json' -p data.txt ${ALB DNS}
+```
+
 ## Reference
 - [Scalable Fargate Service](https://templates.cloudonaut.io/en/stable/fargate/)
 - [CloudFormation Templates for AWS Fargate deployments](https://github.com/nathanpeck/aws-cloudformation-fargate)
