@@ -1,4 +1,4 @@
-# Scalable AWS ECS Fargate using Apollo Server as example
+# Scalable AWS ECS Fargate using Apollo Server as an example
 
 ## HOWTO
 - If you want to test on the Premises, you can using docker-compose to run it.
