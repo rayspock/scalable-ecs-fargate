@@ -1,8 +1,8 @@
-FROM node:10.17.0-alpine
+FROM node:21-alpine
 COPY ./packages/frontend /frontend
 RUN chown -R node:node /frontend
 USER node
 WORKDIR /frontend
-RUN npm i
+RUN yarn
 EXPOSE 3000
 CMD ["node", "src/index.js"]

@@ -10,8 +10,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "graphql": "^14.5.8",
-    "@apollo/federation": "^0.11.0",
-    "apollo-server": "^2.9.13"
+    "@apollo/federation": "^0.38.1",
+    "apollo-server": "^3.13.0",
+    "graphql": "^16.8.1"
   }
 }
